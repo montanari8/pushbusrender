@@ -2,7 +2,7 @@ const publicVapidKey = "BGzhoR-UB7WPENnX8GsiKD90O8hLL7j8EPNL3ERqEiUUw1go74KBLCbi
 
 
 // Use a URL base da API a partir de uma variável de ambiente ou um valor padrão
-const apiBaseUrl = "https://pushbusrender.onrender.com/";
+const apiBaseUrl = "https://pushbusrender.onrender.com";
 //const apiBaseUrl = "http://localhost:3000";
 
 // Check for service worker
