@@ -73,8 +73,8 @@ const port = process.env.PORT || 3000;
 app.listen(port, () => console.log(`Servidor iniciado na porta ${port}`));
 
 // Função para enviar notificações para todas as assinaturas
-const sendNotification = (title) => {
-  const payload = { title };
+const sendNotification = (body) => {
+  const payload = { title : "KDBus", body: body};
   subscriptions.forEach(subscription => {
     push.send(subscription, payload, (err, result) => {
       if (err) {

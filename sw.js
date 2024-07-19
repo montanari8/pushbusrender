@@ -5,6 +5,6 @@ self.addEventListener("push", (e) => {
   console.log("Push Recieved...");
 
   self.registration.showNotification(data.title, {
-    body: "KDBus",
+    body: data.body,
   });
 });
