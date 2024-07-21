@@ -4,12 +4,22 @@ const path = require("path");
 const PushNotifications = require("node-pushnotifications");
 const cors = require("cors");
 
-//Importar rota de teste
-const { coordenadas } = require('./rota');
-
 require("dotenv").config(); // Carrega as variáveis de ambiente do arquivo .env
 
 const app = express();
+
+
+// Variáveis para controlar a posição anterior do ônibus e o estado do ponto
+var posicaoAnterior = null;
+var passouPeloPonto = false;
+var proximidade = false;
+var notificado2500m = true;
+var notificaPassageiro = true;
+var velocidadeMedia = 60; // Velocidade média em km/h https://www5.usp.br/noticias/comportamento/faixas-exclusivas-aumentaram-a-velocidade-media-dos-onibus/
+
+
+//Importar rota de teste
+const { coordenadas } = require('./rota');
 
 // Configuração de CORS para permitir todas as origens
 app.use(cors());
@@ -74,7 +84,7 @@ app.listen(port, () => console.log(`Servidor iniciado na porta ${port}`));
 
 // Função para enviar notificações para todas as assinaturas
 const sendNotification = (body) => {
-  const payload = { title : "KDBus", body: body};
+  const payload = { title: "KDBus", body: body };
   subscriptions.forEach(subscription => {
     push.send(subscription, payload, (err, result) => {
       if (err) {
@@ -86,25 +96,19 @@ const sendNotification = (body) => {
   });
 };
 
-/*
-// Enviar notificações a cada 10 segundos
-setInterval(sendNotification, 10000);
-*/
-
-
 // Coordenadas do proximidade fixo (exemplo: posição do passageiro)
 var latFixo = -23.593798331228253;
 var lonFixo = -48.01770304206565;
 
 // Coordenadas do proximidade de ônibus
-var proximidadeOnibus = { 'lat': -23.59468, 'lon': -48.01904 }
+var proximidadeOnibus = { 'lat': -23.59468, 'lon': -48.01904 };
 
 var index = 0;
 
-
+// Função para mover o ônibus
 function moveBus() {
   if (index < coordenadas.length - 1) {
-    console.log('Movendo ônibus para a próxima coordenada...');
+    // console.log('Movendo ônibus para a próxima coordenada...');
 
     const [lat2, lon2] = coordenadas[index + 1];
 
@@ -117,10 +121,14 @@ function moveBus() {
   } else {
     // Reinicia o índice para que o loop recomece
     index = 0;
+    notificado2500m = true;
+    passouPeloPonto = false;
+
+    console.log('\n\n reinicia o loop com true ' + notificado2500m + '\n\n');
   }
 }
 
-// Função para calcular a distância entre dois proximidades usando Haversine
+// Função para calcular a distância entre dois pontos usando Haversine
 function calcularDistancia(lat1, lon1, lat2, lon2) {
   var R = 6371000; // Raio da Terra em metros
   var φ1 = lat1 * Math.PI / 180;
@@ -136,70 +144,120 @@ function calcularDistancia(lat1, lon1, lat2, lon2) {
   var distancia = R * c;
   return distancia;
 }
+// Função para calcular o tempo estimado em horas, minutos e segundos
+function calcularTempo(distanciaKm, velocidadeKmh) {
+  var tempoTotalMinutos = (distanciaKm / velocidadeKmh) * 60;
+  var horas = Math.floor(tempoTotalMinutos / 60);
+  var minutos = Math.floor(tempoTotalMinutos % 60);
+  var segundos = Math.floor((tempoTotalMinutos * 60) % 60);
 
-// Variáveis para controlar a posição anterior do ônibus e o estado do proximidade
-var posicaoAnterior = null;
-var passouPeloPonto = false;
-var proximidade = false;
+  return {
+    horas: horas,
+    minutos: minutos,
+    segundos: segundos
+  };
+}
+// Função para formatar o tempo em hh:mm:ss
+function formatarTempo(tempo) {
+  var horas = tempo.horas.toString().padStart(2, '0');
+  var minutos = tempo.minutos.toString().padStart(2, '0');
+  var segundos = tempo.segundos.toString().padStart(2, '0');
+  return `${horas}:${minutos}:${segundos}`;
+}
+
 
 // Função para atualizar a mensagem de distância e enviar notificação
-function updateDistance(lat2, lon2) {
-  var latBus = lat2;
-  var lonBus = lon2;
+function updateDistance(latBus, lonBus) {
+  //console.log('Latitude ônibus: ' + latBus + ' Longitude ônibus: ' + lonBus);
 
-  console.log('Latitude ônibus: ' + latBus + ' Longitude ônibus: ' + lonBus);
+  console.log('\n inicia o loop com true ' + notificado2500m + '\n');
+
 
   // Verifica se já há uma posição anterior registrada
   if (posicaoAnterior === null) {
     posicaoAnterior = { lat: latBus, lon: lonBus };
-    console.log('Posição anterior do ônibus: ' + posicaoAnterior.lat + ', ' + posicaoAnterior.lon);
+    console.log('Posição anterior do ônibus antes de teste de distância: ' + posicaoAnterior.lat + ', ' + posicaoAnterior.lon);
   }
 
   // Calcula a distância percorrida desde a última verificação
   var distanciaPercorrida = calcularDistancia(posicaoAnterior.lat, posicaoAnterior.lon, latBus, lonBus);
-
-  // Calcula a distância entre o ônibus e o proximidade de ônibus
-  var distanciaproximidadeOnibus = calcularDistancia(proximidadeOnibus.lat, proximidadeOnibus.lon, latBus, lonBus);
-  console.log('A distância do ônibus em relação ao proximidade de ônibos é: ' + distanciaproximidadeOnibus);
+  //console.log('Distância percorrida: ' + distanciaPercorrida);
 
   // Calcula a distância atual do ônibus ao proximidade do passageiro
-  var distancia = calcularDistancia(latFixo, lonFixo, latBus, lonBus);
-  var distanciaArredondada = Math.floor(distancia); // Arredonda para baixo para remover casas decimais
+  var distanciaOnibusPassageiro = calcularDistancia(latFixo, lonFixo, latBus, lonBus);
+  var distanciaOnibusPonto = calcularDistancia(proximidadeOnibus.lat, proximidadeOnibus.lon, latBus, lonBus);
 
-  // Verifica se a distância é menor ou igual a 200 metros e se proximidade é false
-  if (distanciaArredondada <= 200 && !passouPeloPonto) {
-    sendNotification("O ônibus está a 200 metros ou menos da posição do passageiro.");
-  }
+  var distanciaArredondada = Math.floor(distanciaOnibusPassageiro); // Arredonda para baixo para remover casas decimais
 
-  console.log(distanciaArredondada, distanciaPercorrida);
+  // Converte a distância para quilômetros
+  var distanciaKm = distanciaOnibusPassageiro / 1000;
 
-  // condição proximidade de ônibus
-  if (distanciaproximidadeOnibus < 50 && !passouPeloPonto) {
-    sendNotification("O ônibus está no ponto de ônibus.");
-    console.log('O ônibus está no ponto de ônibus.');
-    passouPeloPonto = true; // Marca que o ônibus passou próximo ao passageiro
-  }
+  // Calcula o tempo estimado em horas, minutos e segundos
+  var tempoEstimado = calcularTempo(distanciaKm, velocidadeMedia);
+  var tempoEstimadoFormatado = formatarTempo(tempoEstimado);
 
-  // Verifica se a distância é menor ou igual a 3000 metros e proximidade é false
-  if (distanciaArredondada <= 3000 && !proximidade && !passouPeloPonto) {
-    console.log('O ônibus está a ' + distanciaArredondada + ' metros da posição do passageiro.');
+  console.log('Distancia entre o ônibus e o passageiro = ' + distanciaOnibusPassageiro + ' - ' + notificado2500m + '\n\n');
+
+  if (distanciaOnibusPassageiro <= 2500 && notificado2500m === true) {
+    console.log('\n\n ==================================================================================================> O ônibus está a 2,5 km da sua posição. \n\n\n');
+
+
     if (distanciaPercorrida >= 500) {
+      console.log('O ônibus percorreu 500 metros desde a última verificação.');
+
+
+
+
+
+      if (distanciaOnibusPassageiro <= 200) {
+        console.log('O ônibus está a 200 metros da sua posição.');
+
+
+
+        if (distanciaOnibusPonto <= 50 && !passouPeloPonto) {
+
+          sendNotification("O ônibus está no ponto de ônibus.");
+          passouPeloPonto = true;
+
+        } else if (distanciaOnibusPonto > 50 && !passouPeloPonto) {
+
+          sendNotification("O ônibus está próximo!!!");
+
+        }
+
+
+      } else if (distanciaPercorrida > 200 && passouPeloPonto === true && notificado2500m === true) {
+
+        sendNotification("O ônibus já passou pelo ponto.");
+        notificado2500m = false;
+        console.log('\n segundo if false ' + notificado2500m + '\n')
+
+      } else {
+
+        //sendNotification("O ônibus está a " + distanciaArredondada + " metros da sua posição.");
+
+        // Calcula e notifica o tempo estimado a cada 500 metros percorridos
+        sendNotification("O ônibus está a " + distanciaArredondada + " metros da sua posição. Ele chegará em aproximadamente " + tempoEstimadoFormatado + ".");
+
+      }
+
+      // Atualiza a posição anterior para a nova posição do ônibus
       posicaoAnterior = { lat: latBus, lon: lonBus };
-      // Envia a notificação
-      sendNotification('O ônibus está a ' + distanciaArredondada + ' metros da sua posição.');
-      console.log('O ônibus está a ' + distanciaArredondada + ' metros da sua posição.');
+      //console.log('Nova posição anterior do ônibus: ' + posicaoAnterior.lat + ', ' + posicaoAnterior.lon);
+      //console.log('Distância dentro do loop '+ distanciaOnibusPassageiro + '\n' );
+
     }
-  } else if (distanciaproximidadeOnibus > 50 && distanciaproximidadeOnibus <= 100) {
-    posicaoAnterior = { lat: latBus, lon: lonBus };
-    // Envia a notificação
-    sendNotification('O ônibus já passou pelo ponto e está a ' + distanciaArredondada + ' metros da sua posição.');
-    console.log('O ônibus já passou pelo ponto e está a ' + distanciaArredondada + ' metros da sua posição.');
-    proximidade = false;
-  } else if (distanciaArredondada > 200 && passouPeloPonto) {
-    message.innerHTML = 'O ônibus está a mais de ' + distanciaArredondada + ' km da posição do passageiro.';
-    console.log('O ônibus está a mais de ' + distanciaArredondada + ' km da posição do passageiro.');
+
+
+
+
   }
+
+
+
+
 }
 
+
 // Chame a função moveBus repetidamente para simular o movimento do ônibus
-setInterval(moveBus, 3000); // Ajuste o intervalo conforme necessário (3000 ms = 3 segundos)
+setInterval(moveBus, 150); // Ajuste o intervalo conforme necessário (3000 ms = 3 segundos)
