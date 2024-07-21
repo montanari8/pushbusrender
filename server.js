@@ -260,4 +260,4 @@ function updateDistance(latBus, lonBus) {
 
 
 // Chame a função moveBus repetidamente para simular o movimento do ônibus
-setInterval(moveBus, 1000); // Ajuste o intervalo conforme necessário (1000 ms = 1 segundos)
+setInterval(moveBus, 500); // Ajuste o intervalo conforme necessário (500 ms = 1/2 segundos)
