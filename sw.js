@@ -5,6 +5,7 @@ self.addEventListener("push", (e) => {
   console.log("Push Recieved...");
 
   self.registration.showNotification(data.title, {
+    icon: './pushbus_icon_192x192',
     body: data.body,
   });
 });
